@@ -142,11 +142,34 @@ Ver **[DEPLOY.md](./DEPLOY.md)** para Easypanel y Hostinger.
 
 | | |
 |---|---|
-| RAM del servidor | ~140 MB |
-| CPU | ~0% en reposo |
+| RAM del servidor | ~141 MB |
+| CPU | ~0.8% con 94 req/s |
 | dist/ (frontend) | 46 MB |
 | sprites/ | 39 MB (estáticos) |
 | Dependencias | express, ws, react — **sin módulos nativos** |
+
+## Tests
+
+```
+663 passed · 35 failed · 184 skipped
+```
+
+Comparado con el upstream sin modificar (misma máquina):
+
+| | upstream | este proyecto |
+|---|---|---|
+| Tests pasan | 363 | **663** |
+| Tests fallan | 149 | **35** |
+| Tests omitidos | 289 | 184 |
+
+Los 35 que fallan son **del entorno de Windows** (modos de archivo POSIX,
+ausencia de `bash` / `sleep` / `awk`, `process.getuid`) y fallan igual en el
+árbol original — ninguno es de estos cambios. De hecho, quitar
+`better-sqlite3` (nativo) desbloqueó ~280 tests que el upstream no podía
+ejecutar sin toolchain de C.
+
+Los tests propios: `tests/n8n.test.ts` (16, la traducción) y
+`tests/n8n-api.test.ts` (15, las rutas HTTP).
 
 ---
 
