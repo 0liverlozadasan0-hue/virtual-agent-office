@@ -138,6 +138,44 @@ Ver **[DEPLOY.md](./DEPLOY.md)** para Easypanel y Hostinger.
 
 ---
 
+## La charla del panel
+
+El panel `#office-general` tiene dos capas:
+
+**Lo que dice el servidor** (lo que produce tu n8n):
+
+```
+Chatwoot Receiver    📋 Atendiendo a Juan Pérez
+Ejecutivo Comercial  📋 Consultando precio PolySack 25kg
+Chatwoot Receiver    ✓  done: Respuesta enviada
+```
+
+**La charla de los personajes**, que es contextual: cada rol habla de lo
+suyo usando la tarea que tu n8n ya manda.
+
+```
+Chatwoot Receiver    ⚡ tengo a Juan Pérez esperando
+Ejecutivo Comercial  ⚡ confirmando precio PolySack 25kg
+Ing. Procesos        ⚡ revisando cómo se hace AXIAL paso a paso
+Router Semántico     ⚡ encajando productos
+```
+
+**Cuesta cero tokens.** El upstream resolvía esto con un watcher que corría
+`claude -p`: un proceso más en el servidor, la CLI de Claude Code
+instalada y ~$0.0015 por respuesta, todo para un texto decorativo. Aquí
+el vocabulario está en `src/agentChatter.ts` y se genera en el navegador.
+
+Prioridad de las frases: **incidente → tema de The Office → contextual →
+frase genérica**. Los roles de n8n (soporte, comercial, procesos,
+clasificador…) se saltan el tema de The Office: un agente de soporte de
+Polyrafia no puede hablar de *"it is not DNS"* porque alguien haya puesto
+el tema de la serie.
+
+Si tu n8n manda un `status` propio en el `POST /api/n8n/working`, ese gana
+(es lo más preciso que hay) y la charla contextual no se usa.
+
+---
+
 ## Consumo
 
 | | |
