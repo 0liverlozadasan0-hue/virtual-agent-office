@@ -23,7 +23,8 @@
     "check-assets": "node scripts/check-assets.mjs",
     "doctor": "node scripts/doctor.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:deploy": "node verificar-despliegue.js"
   },
   "dependencies": {
     "express": "^4.19.2",
