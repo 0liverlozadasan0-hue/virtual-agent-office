@@ -25,3 +25,8 @@ graphify-out/graph.html
 
 # Bloc de notas donde se pega la salida de los scripts
 SALIDA-PUSH.txt
+
+# El CI de GitHub Actions necesita un permiso extra en el token (workflows:
+# read and write) para poder escribir este fichero. La misma validacion
+# se hace en local con: npm run verify:deploy
+.github/workflows/ci.yml
