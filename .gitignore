@@ -22,3 +22,6 @@ graphify-out/cache/
 graphify-out/.graphify_*
 graphify-out/graph.html
 .claude/worktrees/
+
+# Bloc de notas donde se pega la salida de los scripts
+SALIDA-PUSH.txt
