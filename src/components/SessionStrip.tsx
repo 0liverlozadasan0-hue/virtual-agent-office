@@ -27,8 +27,9 @@ import { mainId, isMainAgent, mainTone, mainPillText, shortModel, projectFromCwd
 // (only used while no main record has arrived — an old server)
 const BUSY_WINDOW_MS = 10_000
 
-/** The first line of an unhooked pill's tooltip: how to see what the session is doing */
-export const NOT_HOOKED_HINT = 'Not hooked — run `npm run install-hooks` (or /plugin install agent-office) to see what it is doing'
+/** The first line of an unhooked pill's tooltip: how to see what the session is doing.
+ *  An n8n office has no hooks — its events arrive over the n8n API. */
+export const NOT_HOOKED_HINT = 'Not hooked — an n8n office needs no hooks: its agents arrive over the n8n API'
 
 interface SessionStripProps {
   sessions: SessionInfo[]

@@ -94,7 +94,9 @@ function hooksPill(v: HookVerdict): { text: string; tone: 'ok' | 'warn' | 'dim' 
     case 'unknown': return { text: 'hooks: —', tone: 'dim' }
     case 'seen':    return { text: `hooks: last seen ${formatAgo(v.agoMs)}`, tone: v.agoMs < 10 * 60_000 ? 'ok' : 'dim' }
     case 'waiting': return { text: 'hooks: none yet', tone: 'dim' }
-    case 'missing': return { text: `no hook events yet — run ${INSTALL_CMD}`, tone: 'warn' }
+    // An n8n office has no hooks: the events arrive over the n8n API, so a
+    // quiet strip is the normal state, not a warning to install anything.
+    case 'missing': return { text: 'waiting for n8n events', tone: 'dim' }
   }
 }
 
