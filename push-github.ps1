@@ -2,9 +2,9 @@
 #
 #   .\push-github.ps1
 #
-# Pide un Personal Access Token y lo hace push. El token NO se escribe en
-# la linea de comandos ni en el historial: se pasa por GIT_ASKPASS, que Git
-# invoca solo cuando necesita credenciales.
+# Pide un Personal Access Token y hace el push. El token NO se escribe en
+# la linea de comandos, ni en un .cmd, ni en el historial: vive solo en la
+# variable de entorno de este proceso y se lo pasa a git por GIT_ASKPASS.
 #
 # Repo: https://github.com/0liverlozadasan0-hue/virtual-agent-office
 
@@ -38,20 +38,35 @@ Write-Host "  https://github.com/settings/personal-access-tokens/new" -Foregroun
 Write-Host "  Permisos: Repository access -> Only select repositories ->" -ForegroundColor DarkGray
 Write-Host "  virtual-agent-office, y marca Read and write." -ForegroundColor DarkGray
 Write-Host ""
-$token = Read-Host "  Personal Access Token" -AsSecureString
-$plano = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-  [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($token))
-if (-not $plano.Trim()) { Die "Falta el token" }
+$secreto = Read-Host "  Personal Access Token" -AsSecureString
+$token = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
+  [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secreto))
+if (-not $token.Trim()) { Die "Falta el token" }
 
-# El askpass solo existe durante este push.
-$askpass = Join-Path $env:TEMP ("git-askpass-" + [guid]::NewGuid().ToString('N') + '.cmd')
+# El token viaja en la variable de entorno, no en el texto de un .cmd:
+# CMD no lo parsea nunca y un token con & | ^ < > no rompe nada.
+$env:OFFICE_GIT_USER  = $Usuario
+$env:OFFICE_GIT_TOKEN = $token.Trim()
+
+# El askpass es un .cmd que NO contiene el token: solo llama a PowerShell,
+# que lee la respuesta de la variable de entorno.
+$dirTemporal = Join-Path $env:TEMP ("git-askpass-" + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Force -Path $dirTemporal | Out-Null
+
+$ps1 = Join-Path $dirTemporal 'askpass.ps1'
+@'
+param([string]$Prompt)
+if ($Prompt -match 'Username') { Write-Output $env:OFFICE_GIT_USER }
+else { Write-Output $env:OFFICE_GIT_TOKEN }
+'@ | Set-Content -Path $ps1 -Encoding UTF8
+
+$cmd = Join-Path $dirTemporal 'askpass.cmd'
 @"
 @echo off
-if "%1"=="Username" echo $Usuario
-if "%1"=="Password" echo $plano
-"@ | Set-Content -Path $askpass -Encoding ASCII
+powershell -NoProfile -ExecutionPolicy Bypass -File "$ps1" "%1"
+"@ | Set-Content -Path $cmd -Encoding ASCII
 
-$env:GIT_ASKPASS = $askpass
+$env:GIT_ASKPASS = $cmd
 $env:GIT_TERMINAL_PROMPT = '0'
 $env:GCM_INTERACTIVE = 'never'
 
@@ -62,7 +77,8 @@ try {
   if ($LASTEXITCODE -ne 0) {
     Die @"
 El push fallo. Comprueba:
-  - que el token tenga permiso de escritura sobre el repo
+  - que el token tenga permiso de escritura (Contents: Read and write)
+  - que el repo seleccionado en el token sea $Usuario/$Repo
   - que hayas copiado el token entero, sin espacios
 "@
   }
@@ -86,8 +102,10 @@ El push fallo. Comprueba:
   Write-Host ""
 }
 finally {
-  Remove-Item -Path $askpass -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path $dirTemporal -Recurse -Force -ErrorAction SilentlyContinue
   $env:GIT_ASKPASS = ''
   $env:GIT_TERMINAL_PROMPT = ''
-  $plano = $null
+  $env:OFFICE_GIT_USER = ''
+  $env:OFFICE_GIT_TOKEN = ''
+  $token = $null
 }
