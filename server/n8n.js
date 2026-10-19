@@ -72,14 +72,17 @@ export function n8nEvent(body) {
     case 'n8n_working': {
       const id = text(body.agentId ?? body.id, 80)
       if (!id) return null
-      const status = text(body.status ?? body.activity, 200) ?? text(body.tool, 80) ?? 'working'
+      // The status n8n sends is the most accurate thing there is, so it
+      // wins. Without one, the field is left out on purpose: the office
+      // then has the agent say what its role is doing (and what it is
+      // working on) instead of a placeholder — see src/agentChatter.ts.
+      const status = text(body.status ?? body.activity, 200)
       return {
         type: 'agent_working',
         agentId: id,
-        // `status` is what the character shows; `tool` is what the inspector
-        // card lists. The office reads the tool name out of the status text
-        // when the tool field is absent.
-        status,
+        ...(status ? { status } : {}),
+        // The tool decides the animation: a read shows the character
+        // reading, anything else shows it typing.
         tool: text(body.tool, 80),
         failed: body.failed === true || undefined,
         sessionId: text(body.sessionId, 120),

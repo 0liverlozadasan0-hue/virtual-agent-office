@@ -57,7 +57,7 @@ import {
   waterMessage,
 } from './agentManager'
 import { BOSS_ROLE, BOSS_NAME } from './config'
-import { getTheme } from './theme'
+import { getTheme, themedBreakFor, themedWorkFor } from './theme'
 import { getVariant, pickIncidentLine } from './incident'
 import { isSignalKind, signalFamily, signalOutcome, signalWhere, SCENE_MS } from './signals'
 
@@ -891,7 +891,6 @@ function reduceEvent(state: OfficeState, action: OfficeAction, env: OfficeEnv): 
     // ── Agent started working / status update ──────────────────────────────
     case 'agent_working': {
       const id = action.agentId ?? action.agent?.id
-      const statusMsg = action.status ?? workMessage()
       const icon = action.failed ? '❌' : '⚡'
       const failed = !!action.failed
 
@@ -901,6 +900,10 @@ function reduceEvent(state: OfficeState, action: OfficeAction, env: OfficeEnv): 
         // A late status for an agent already walking out (hook curls are
         // backgrounded, ordering is not guaranteed): it stays on its way out.
         if (agent.state === 'completed') return none
+        // The status n8n sends is the most accurate thing there is, so it
+        // wins; without one the agent says what its role is doing (and what
+        // it is working on) instead of the generic "on it".
+        const statusMsg = action.status ?? themedWorkFor(agent.role, agent.task)
         const effects: OfficeEffect[] = [
           { kind: 'msg', sender: agent.name, role: agent.role, color: cfgFor(agent.role).color, text: `${icon} ${statusMsg}` },
         ]
@@ -918,6 +921,7 @@ function reduceEvent(state: OfficeState, action: OfficeAction, env: OfficeEnv): 
       // No agentId — tool use from a main thread. With a sessionId it is that
       // session's own Claude at work. Without one (old hook, sim mode) any
       // worker will do; failing that, the only Claude in the office.
+      const statusMsg = workMessage()
       const origin = { project: action.project, cwd: action.cwd }
       if (action.sessionId) return mainThreadWorking(action.sessionId, statusMsg, failed, origin)
       const workers = state.agents.filter(a => a.state === 'working' && a.id !== BOSS_ID && !isMainAgent(a))
@@ -1492,7 +1496,7 @@ export function stepOffice(state: OfficeState, dt: number, env: OfficeEnv): Step
             const main = isMainAgent(agent)
             updated = main
               ? { ...agent, position, state: agentStateFor(agent.mainState) }
-              : { ...agent, position, state: 'working', statusText: pending?.status ?? workMessage(), lastFailed: pending ? pending.failed : agent.lastFailed }
+              : { ...agent, position, state: 'working', statusText: pending?.status ?? themedWorkFor(agent.role, agent.task), lastFailed: pending ? pending.failed : agent.lastFailed }
             changed = true
           } else if (moved) {
             updated = { ...agent, position }
@@ -1518,7 +1522,7 @@ export function stepOffice(state: OfficeState, dt: number, env: OfficeEnv): Step
           } else if (now - (m.breakStartedAt ?? now) >= BREAK_DURATION) {
             setMeta(agent.id, { onBreak: false, breakStartedAt: null, arrivedAtDeskAt: now })
             effects.push({ kind: 'furniture', id: 'coffee', state: 'off' }, { kind: 'furniture', id: 'filing-1', state: 'closed' })
-            updated = walkTo({ ...agent, position }, agent.deskPosition, workMessage(), env)
+            updated = walkTo({ ...agent, position }, agent.deskPosition, themedWorkFor(agent.role, agent.task), env)
             changed = true
           }
         } else if (moved) {
@@ -1541,7 +1545,9 @@ export function stepOffice(state: OfficeState, dt: number, env: OfficeEnv): Step
         const breakSpot = useWater ? pickOne(WATER_SPOTS, env.random) : COFFEE_SPOT
         setMeta(agent.id, { onBreak: false, arrivedAtDeskAt: null })
         const isBoss = updated.id === BOSS_ID
-        const breakMsg = useWater ? waterMessage() : (isBoss ? 'grabbing a Red Bull' : coffeeMessage())
+        const breakMsg = isBoss
+          ? 'grabbing a Red Bull'
+          : themedBreakFor(updated.role, useWater ? 'water' : 'coffee', updated.task)
         const breakIcon = isBoss ? '🥫' : (useWater ? '💧' : '☕')
         effects.push(
           { kind: 'msg', sender: updated.name, role: updated.role, color: cfgFor(updated.role).color, text: `${breakIcon} ${breakMsg}` },

@@ -2,6 +2,7 @@
 
 import { useSyncExternalStore } from 'react'
 import { getVariant, pickIncidentLine, type IncidentLineKind } from './incident'
+import { contextualBreak, contextualWork, isAlwaysContextual } from './agentChatter'
 
 export type ThemeName = 'default' | 'office'
 
@@ -262,6 +263,31 @@ export function themedWork(): string   { return variantLine('work')   ?? pick(st
 export function themedDone(): string   { return variantLine('done')   ?? pick(state.name === 'office' ? OFFICE_DONE   : DEFAULT_DONE) }
 export function themedCoffee(): string { return variantLine('coffee') ?? pick(state.name === 'office' ? OFFICE_COFFEE : DEFAULT_COFFEE) }
 export function themedWater(): string  { return variantLine('water')  ?? pick(state.name === 'office' ? OFFICE_WATER  : DEFAULT_WATER) }
+
+// ── Charla contextual ────────────────────────────────────────────
+// La charla de la oficina puede hablar del trabajo real del agente en vez
+// de la frase genérica. Prioridad: incidente → tema de The Office
+// (elegido a mano) → contextual → frase genérica.
+//
+// Los roles de una oficina de n8n (soporte, comercial, procesos...) se
+// saltan el tema de The Office: un agente de soporte de Polyrafia no
+// puede hablar de "it is not DNS" porque el usuario haya puesto el tema
+// de la serie.
+export function themedWorkFor(role: string, task?: string | null): string {
+  const variant = variantLine('work')
+  if (variant) return variant
+  if (state.name === 'office' && !isAlwaysContextual(role)) return pick(OFFICE_WORK)
+  return contextualWork(role, task) ?? pick(DEFAULT_WORK)
+}
+
+export function themedBreakFor(role: string, kind: 'coffee' | 'water', task?: string | null): string {
+  const variant = variantLine(kind)
+  if (variant) return variant
+  if (state.name === 'office' && !isAlwaysContextual(role)) {
+    return pick(kind === 'water' ? OFFICE_WATER : OFFICE_COFFEE)
+  }
+  return contextualBreak(role, task, kind) ?? pick(kind === 'water' ? DEFAULT_WATER : DEFAULT_COFFEE)
+}
 
 // ===== SIM / VIDEO MODE OFFICE SCRIPT =====
 // Parallel tool-output messages keyed by role — used when ?sim or ?video loads with Office theme.
