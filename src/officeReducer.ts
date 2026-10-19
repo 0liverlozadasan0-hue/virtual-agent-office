@@ -921,7 +921,9 @@ function reduceEvent(state: OfficeState, action: OfficeAction, env: OfficeEnv): 
       // No agentId — tool use from a main thread. With a sessionId it is that
       // session's own Claude at work. Without one (old hook, sim mode) any
       // worker will do; failing that, the only Claude in the office.
-      const statusMsg = workMessage()
+      // The status the event carries still wins here: it is the most
+      // accurate thing there is.
+      const statusMsg = action.status ?? workMessage()
       const origin = { project: action.project, cwd: action.cwd }
       if (action.sessionId) return mainThreadWorking(action.sessionId, statusMsg, failed, origin)
       const workers = state.agents.filter(a => a.state === 'working' && a.id !== BOSS_ID && !isMainAgent(a))

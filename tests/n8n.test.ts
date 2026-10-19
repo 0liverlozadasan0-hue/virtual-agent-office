@@ -71,9 +71,18 @@ describe('n8nEvent', () => {
       expect(event!.tool).toBe('Read')
     })
 
-    it('falls back to the tool when no status is given', () => {
+    it('leaves the status out when n8n does not send one', () => {
+      // Sin status, la oficina genera la frase contextual del rol
+      // (src/agentChatter.ts) en vez de repetir el nombre del tool.
       const event = n8nEvent({ type: 'n8n_working', id: 'a', tool: 'Write' })
-      expect(event!.status).toBe('Write')
+      expect(event!.status).toBeUndefined()
+      expect(event!.tool).toBe('Write')
+    })
+
+    it('uses the status n8n sends — it is the most accurate thing there is', () => {
+      const event = n8nEvent({ type: 'n8n_working', id: 'a', status: 'Leyendo contexto', tool: 'Read' })
+      expect(event!.status).toBe('Leyendo contexto')
+      expect(event!.tool).toBe('Read')
     })
 
     it('never sends a top-level agentType — it would trigger the recovered-spawn path', () => {

@@ -266,24 +266,28 @@ export function themedWater(): string  { return variantLine('water')  ?? pick(st
 
 // ── Charla contextual ────────────────────────────────────────────
 // La charla de la oficina puede hablar del trabajo real del agente en vez
-// de la frase genérica. Prioridad: incidente → tema de The Office
-// (elegido a mano) → contextual → frase genérica.
+// de la frase genérica.
 //
 // Los roles de una oficina de n8n (soporte, comercial, procesos...) se
-// saltan el tema de The Office: un agente de soporte de Polyrafia no
-// puede hablar de "it is not DNS" porque el usuario haya puesto el tema
-// de la serie.
+// saltan los detalles de la serie: ni el tema de The Office (un agente de
+// soporte de Polyrafia no puede hablar de "it is not DNS") ni las lineas
+// de incidente (que suenan a DEVELOPER: "bisecting between 4f2a1c and
+// main", "it is not DNS"). El incidente sigue siendo VISIBLE — la oficina
+// se pone roja, hay baliza — lo que cambia es el idioma que hablan los
+// personajes de una oficina de atencion al cliente.
 export function themedWorkFor(role: string, task?: string | null): string {
-  const variant = variantLine('work')
+  const contextual = isAlwaysContextual(role)
+  const variant = contextual ? null : variantLine('work')
   if (variant) return variant
-  if (state.name === 'office' && !isAlwaysContextual(role)) return pick(OFFICE_WORK)
+  if (state.name === 'office' && !contextual) return pick(OFFICE_WORK)
   return contextualWork(role, task) ?? pick(DEFAULT_WORK)
 }
 
 export function themedBreakFor(role: string, kind: 'coffee' | 'water', task?: string | null): string {
-  const variant = variantLine(kind)
+  const contextual = isAlwaysContextual(role)
+  const variant = contextual ? null : variantLine(kind)
   if (variant) return variant
-  if (state.name === 'office' && !isAlwaysContextual(role)) {
+  if (state.name === 'office' && !contextual) {
     return pick(kind === 'water' ? OFFICE_WATER : OFFICE_COFFEE)
   }
   return contextualBreak(role, task, kind) ?? pick(kind === 'water' ? DEFAULT_WATER : DEFAULT_COFFEE)
