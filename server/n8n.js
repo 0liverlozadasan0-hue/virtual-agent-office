@@ -175,11 +175,9 @@ export function registerN8nApi(app, deps) {
     const signal = { kind, detail: text(body.detail, 300) }
     // The agent id rides on the body too: relaySignals reads it from there,
     // not out of the signal, and it is what names the agent in the log.
-    if (id) {
-      signal.agentId = id
-      body.agentId = id
-    }
-    ingest({ ...body, type: 'signal', signals: [signal] })
+    const enriched = id ? { ...body, agentId: id } : body
+    if (id) signal.agentId = id
+    ingest({ ...enriched, type: 'signal', signals: [signal] })
     res.json({ ok: true })
   })
 
