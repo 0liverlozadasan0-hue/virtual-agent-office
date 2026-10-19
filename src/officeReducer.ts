@@ -53,8 +53,6 @@ import {
   spawnMessage,
   workMessage,
   doneMessage,
-  coffeeMessage,
-  waterMessage,
 } from './agentManager'
 import { BOSS_ROLE, BOSS_NAME } from './config'
 import { getTheme, themedBreakFor, themedWorkFor } from './theme'
