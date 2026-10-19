@@ -42,11 +42,7 @@ export function n8nEvent(body) {
   if (typeof type !== 'string' || !type.startsWith('n8n_')) return null
 
   switch (type) {
-    case 'n8n_spawned':
-    case 'agent_spawned': {
-      // Both spellings are accepted: `n8n_spawned` for the n8n facade,
-      // `agent_spawned` for a caller already speaking the office protocol.
-      if (type === 'agent_spawned') return body
+    case 'n8n_spawned': {
       const agent = body.agent ?? body
       const id = text(agent.id ?? body.id, 80)
       if (!id) return null
@@ -66,12 +62,14 @@ export function n8nEvent(body) {
         },
         sessionId: text(body.sessionId, 120),
         project: text(body.project, 120),
+        // An n8n workflow reuses one agent id for every message: the next
+        // message must bring the character back to life, not be read as a
+        // replayed hook spawn.
+        revive: true,
       }
     }
 
-    case 'n8n_working':
-    case 'agent_working': {
-      if (type === 'agent_working') return body
+    case 'n8n_working': {
       const id = text(body.agentId ?? body.id, 80)
       if (!id) return null
       const status = text(body.status ?? body.activity, 200) ?? text(body.tool, 80) ?? 'working'
@@ -88,9 +86,7 @@ export function n8nEvent(body) {
       }
     }
 
-    case 'n8n_completed':
-    case 'agent_completed': {
-      if (type === 'agent_completed') return body
+    case 'n8n_completed': {
       const id = text(body.agentId ?? body.id, 80)
       if (!id) return null
       return {

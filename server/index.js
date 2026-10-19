@@ -1822,6 +1822,9 @@ app.post('/event', requireToken, (req, res) => {
     subagentId: clampString(body.subagentId),
     parentId: clampString(body.parentId),
     failed: body.failed === true || undefined,
+    // An n8n spawn reuses one agent id for every message: bring the
+    // character back to life instead of reading it as a replayed hook spawn.
+    revive: body.revive === true || undefined,
     agentType:  clampString(body.agentType),
     role:       clampString(body.role),
     name:       clampString(body.name),
@@ -2709,7 +2712,24 @@ function processEvent(body) {
         // Replayed spawn (e.g. hook retry) — keep the existing record
         const existing = activeAgents.get(id)
         if (existing.state === 'completed') {
-          // ...unless it already clocked out: re-announcing it would seat a ghost
+          // ...unless it already clocked out: re-announcing it would seat a ghost.
+          // An n8n workflow is the exception: it reuses one agent id for every
+          // message, so the next message must bring the character back to life
+          // rather than be swallowed as a hook retry.
+          if (body.revive === true) {
+            existing.state = 'new-hire'
+            existing.spawnedAt = Date.now()
+            existing.lastActivityAt = existing.spawnedAt
+            existing.task = agent.task ?? existing.task
+            existing.role = agent.role ?? existing.role
+            existing.name = agent.name ?? existing.name
+            existing.agentType = agent.agentType ?? existing.agentType
+            if (session) attachAgentToSession(existing, session)
+            setLineage(existing, agent.parentSubagentId)
+            saveAgents()
+            console.log(`[~] Agent ${id} revived (n8n re-spawn)`)
+            return { type: 'agent_spawned', agent: existing, timestamp: Date.now() }
+          }
           console.log(`[~] Ignoring replayed spawn of completed agent ${id}`)
           return null
         }
