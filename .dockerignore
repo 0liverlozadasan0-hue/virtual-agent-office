@@ -1,0 +1,42 @@
+# ─────────────────────────────────────────────────────────────
+# Lo que NO va en la imagen de producción
+#
+# La imagen final solo necesita: dist/ (el frontend compilado),
+# server/ y office.config.json. Todo lo demás pesa y no se usa.
+# ─────────────────────────────────────────────────────────────
+
+# Dependencias: se instalan dentro de la imagen
+node_modules
+npm-debug.log*
+
+# El frontend se compila DENTRO de la imagen (stage 1)
+dist
+
+# 22 MB de documentación del upstream con imágenes
+docs
+
+# La app de escritorio Electron no se usa en un despliegue n8n
+electron
+build
+release
+out
+
+# Control de versiones
+.git
+.gitignore
+.github
+
+# Configuración local de Claude Code
+.claude
+
+# Token de la API: va en las variables de entorno de Easypanel, nunca en el repo
+.env.local
+.env.*.local
+
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
+tmp
+coverage
+.vitest

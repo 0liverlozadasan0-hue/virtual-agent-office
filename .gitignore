@@ -10,7 +10,9 @@ release/
 *.log
 .DS_Store
 remotion/
-office.config.json
+# office.config.json holds the boss's name, sprite and colour — no secret.
+# The image copies it in, so it has to be in the repo.
+!office.config.json
 .claude/settings.local.json
 .claude/scheduled_tasks.lock
 .playwright-mcp/

@@ -13,7 +13,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          # 24: node:sqlite is stable there (22 needs --experimental-sqlite).
+          node-version: 24
           cache: npm
 
       - name: Install
@@ -22,29 +23,16 @@ jobs:
           # The Electron binary is not needed for type-checking or tests
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
-      - name: Type-check
-        # src/config.ts imports office.config.json, which is gitignored
+      - name: The package manifest is valid UTF-8
+        # A BOM or a stray byte makes node fail with ERR_INVALID_PACKAGE_CONFIG,
+        # and it takes the whole container down. It is invisible in a diff.
         run: |
-          cp office.config.example.json office.config.json
-          npx tsc --noEmit -p .
+          node -e "const b=require('fs').readFileSync('package.json'); JSON.parse(b.toString('utf8')); if(b[0]===0xef) { console.error('BOM'); process.exit(1) }"
 
-      - name: Install Claude Code
-        # The npm package installs the same native binary as the standalone
-        # installer. `claude plugin validate` only reads files, so no login
-        # or network access is needed once it is installed.
-        run: npm install -g @anthropic-ai/claude-code
-
-      - name: Validate plugin manifests
-        # The repository root is the agent-office plugin and its own
-        # marketplace (.claude-plugin/). --strict fails on warnings too, so an
-        # unknown field or a missing description stops here, not on install.
-        run: claude plugin validate . --strict
-        env:
-          DISABLE_AUTOUPDATER: 1
+      - name: Type-check
+        run: npx tsc --noEmit -p .
 
       - name: Test
-        # tests/plugin.test.ts runs `claude plugin validate` again from vitest
-        # now that the CLI is on PATH (it skips with a note when it is not)
         run: npm test
 
       - name: Build
@@ -54,3 +42,24 @@ jobs:
         # Every sprite and room the code can ask for exists in public/, and
         # public/ stays under its size budget (scripts/check-assets.mjs)
         run: npm run check-assets
+
+      - name: The image builds and the server answers
+        # The image is what runs in production: a broken build step or a
+        # missing file only shows up here.
+        run: |
+          docker build -t virtual-agent-office:ci .
+          docker run -d --name office-ci -p 3399:3334 \
+            -e AGENT_OFFICE_API_TOKEN=ci-token \
+            virtual-agent-office:ci
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3399/health > /dev/null; then
+              echo "the office answers /health"
+              docker rm -f office-ci
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "the office never came up:"
+          docker logs office-ci
+          docker rm -f office-ci
+          exit 1

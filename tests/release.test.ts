@@ -1,12 +1,11 @@
 /**
- * Tagged releases. .github/workflows/release.yml builds the desktop installers
- * on a `v*` tag and uploads them to a draft GitHub release, from the `build`
- * section of package.json. These checks keep the workflow, that section and
- * electron/after-pack.cjs in step with each other.
+ * How this deployment ships.
  *
- * The Claude Code plugin (`.claude-plugin/plugin.json` and the
- * `scripts/sync-plugin-version.mjs` that kept its version in step) is not part
- * of this deployment, so there is no `version` script to run any more.
+ * The upstream released tagged desktop installers (electron-builder) from
+ * `.github/workflows/release.yml`. This deployment is a server for an n8n
+ * workflow: it ships as a Docker image built from the Dockerfile, deployed by
+ * Easypanel. There is no desktop installer and no release workflow, and the
+ * checks below keep it that way.
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -18,55 +17,67 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const read = (rel: string) => readFileSync(join(ROOT, rel), 'utf8')
 
 const pkg = JSON.parse(read('package.json'))
-const build = pkg.build
-const workflow = read('.github/workflows/release.yml')
+const dockerfile = read('Dockerfile')
+const dockerignore = read('.dockerignore')
 
-describe('the electron-builder configuration a release is built from', () => {
-  it('names every installer Agent-Office-<version>-<os>-<arch>.<ext>', () => {
-    expect(build.artifactName).toBe('Agent-Office-${version}-${os}-${arch}.${ext}')
+describe('the Docker image', () => {
+  it('builds the frontend in one stage and runs the server in another', () => {
+    expect(dockerfile).toMatch(/FROM node:24-alpine AS build/)
+    expect(dockerfile).toMatch(/FROM node:24-alpine AS runtime/)
+    expect(dockerfile).toMatch(/npm run build/)
   })
 
-  it('publishes to a GitHub draft, in the repository package.json names', () => {
-    expect(build.publish).toEqual({ provider: 'github', releaseType: 'draft' })
-    expect(pkg.repository.url).toMatch(/^https:\/\/github\.com\/W17ant\/Claude-Office(\.git)?$/)
+  it('runs as a non-root user and binds every interface', () => {
+    // Traefik reaches the container through the Docker network: a bind on
+    // 127.0.0.1 would be unreachable.
+    expect(dockerfile).toMatch(/ENV AGENT_OFFICE_HOST=0\.0\.0\.0/)
+    expect(dockerfile).toMatch(/USER node/)
   })
 
-  it('builds macOS as one dmg per architecture, never universal — after-pack.cjs refuses that', () => {
-    expect(build.mac.target).toEqual([{ target: 'dmg', arch: ['arm64', 'x64'] }])
-    expect(read('electron/after-pack.cjs')).toMatch(/archName === 'universal'/)
+  it('keeps the runtime image lean: production deps only', () => {
+    expect(dockerfile).toMatch(/npm ci --omit=dev/)
   })
 
-  it('builds an NSIS installer that asks where to install on Windows, and an AppImage on Linux', () => {
-    expect(build.win.target).toEqual(['nsis'])
-    expect(build.nsis).toMatchObject({ oneClick: false, allowToChangeInstallationDirectory: true })
-    expect(build.linux.target).toEqual(['AppImage'])
-  })
-})
-
-describe('.github/workflows/release.yml', () => {
-  it('runs on v* tags and by hand, with a token that may create the release, one run per ref at a time', () => {
-    expect(workflow).toMatch(/^on:\n  push:\n    tags: \['v\*'\]\n  workflow_dispatch:/m)
-    expect(workflow).toMatch(/^permissions:\n  contents: write/m)
-    expect(workflow).toMatch(/^concurrency:\n  group: release-\$\{\{ github\.ref \}\}/m)
+  it('checks health on the endpoint the server actually answers', () => {
+    // /health is the upstream's; /api/health is the n8n bridge's and /api/health
+    // is NOT a route on the server.
+    expect(dockerfile).toMatch(/HEALTHCHECK/)
+    expect(dockerfile).toMatch(/\/health/)
   })
 
-  it('builds on all three runners, unsigned, and uploads to the draft', () => {
-    for (const os of ['macos-latest', 'windows-latest', 'ubuntu-latest']) {
-      expect(workflow).toContain(`os: ${os}`)
+  it('leaves out what the runtime does not need', () => {
+    for (const skipped of ['node_modules', 'dist', 'docs', 'electron']) {
+      expect(dockerignore, skipped).toMatch(new RegExp(`^${skipped}`, 'm'))
     }
-    expect(workflow).toContain('npx electron-builder ${{ matrix.args }} --publish always')
-    expect(workflow).toContain('GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}')
-    expect(workflow).toContain('CSC_IDENTITY_AUTO_DISCOVERY: false')
-  })
-
-  it('ships the default boss: the example office.config.json is never copied in', () => {
-    expect(workflow).not.toMatch(/cp office\.config\.example\.json/)
   })
 })
 
-describe('the Claude Code plugin', () => {
-  it('is not part of this deployment: no plugin manifest and no `version` script', () => {
-    expect(existsSync(join(ROOT, '.claude-plugin', 'plugin.json'))).toBe(false)
-    expect(pkg.scripts.version).toBeUndefined()
+describe('the package manifest', () => {
+  it('is valid UTF-8 without a BOM: Node refuses to start otherwise', () => {
+    // A BOM (or a stray byte from a bad editor) makes node fail with
+    // ERR_INVALID_PACKAGE_CONFIG, and it takes the whole image down.
+    const bytes = readFileSync(join(ROOT, 'package.json'))
+    expect(bytes[0]).toBe(0x7b) // '{'
+    expect(bytes.subarray(0, 3).toString('hex')).not.toBe('efbbbf')
+    expect(() => JSON.parse(bytes.toString('utf8'))).not.toThrow()
+  })
+
+  it('declares the Node version the built-in sqlite needs', () => {
+    expect(pkg.engines.node).toBe('>=22')
+  })
+
+  it('starts the server, not the desktop app', () => {
+    expect(pkg.main).toBe('server/index.js')
+    expect(pkg.scripts.start).toBe('node server/index.js')
+  })
+
+  it('keeps react out of the runtime dependencies: it is bundled at build time', () => {
+    expect(Object.keys(pkg.dependencies).sort()).toEqual(['express', 'ws'])
+    expect(pkg.devDependencies).toHaveProperty('react')
+  })
+
+  it('has no electron-builder configuration: there is no desktop release', () => {
+    expect(pkg.build).toBeUndefined()
+    expect(existsSync(join(ROOT, '.github', 'workflows', 'release.yml'))).toBe(false)
   })
 })

@@ -1,109 +1,48 @@
 {
-    "name":  "agent-office",
-    "productName":  "Agent Office",
-    "version":  "1.1.1",
-    "description":  "Pixel art office visualization for AI agents powered by Claude Code hooks",
-    "author":  "W17ANT",
-    "license":  "MIT",
-    "repository":  {
-                       "type":  "git",
-                       "url":  "https://github.com/W17ant/Claude-Office.git"
-                   },
-    "homepage":  "https://github.com/W17ant/Claude-Office",
-    "bugs":  "https://github.com/W17ant/Claude-Office/issues",
-    "type":  "module",
-    "main":  "electron/main.cjs",
-    "scripts":  {
-                    "dev":  "vite",
-                    "dev:electron":  "concurrently \"vite\" \"sleep 2 \u0026\u0026 electron .\"",
-                    "dev:all":  "concurrently \"node server/index.js\" \"vite\"",
-                    "build":  "tsc \u0026\u0026 vite build",
-                    "build:electron":  "vite build \u0026\u0026 electron-builder",
-                    "pack":  "vite build \u0026\u0026 electron-builder --dir",
-                    "electron":  "electron .",
-                    "server":  "node server/index.js",
-                    "open":  "node scripts/open-office.mjs",
-                    "rotate-token":  "node scripts/rotate-token.mjs",
-                    "test":  "vitest run",
-                    "test:watch":  "vitest",
-                    "check-assets":  "node scripts/check-assets.mjs",
-                    "doctor":  "node scripts/doctor.mjs",
-                    "start":  "node server/index.js",
-                    "n8n":  "echo \"Remember to set AGENT_OFFICE_API_TOKEN\"",
-                    "token":  "node server/token.js"
-                },
-    "dependencies":  {
-                         "concurrently":  "^8.2.2",
-                         "express":  "^4.19.2",
-                         "react":  "^18.3.1",
-                         "react-dom":  "^18.3.1",
-                         "ws":  "^8.18.0"
-                     },
-    "devDependencies":  {
-                            "@types/express":  "^4.17.21",
-                            "@types/react":  "^18.3.3",
-                            "@types/react-dom":  "^18.3.0",
-                            "@types/ws":  "^8.5.12",
-                            "@vitejs/plugin-react":  "^4.3.1",
-                            "electron":  "^33.0.0",
-                            "electron-builder":  "^24.13.3",
-                            "supertest":  "^7.3.1",
-                            "typescript":  "^5.5.3",
-                            "vite":  "^5.4.0",
-                            "vitest":  "^3.2.7"
-                        },
-    "build":  {
-                  "appId":  "com.agentoffice.app",
-                  "productName":  "Agent Office",
-                  "artifactName":  "Agent-Office-${version}-${os}-${arch}.${ext}",
-                  "directories":  {
-                                      "output":  "release",
-                                      "buildResources":  "build"
-                                  },
-                  "asar":  false,
-                  "files":  [
-                                "dist/**",
-                                "electron/**",
-                                "!electron/after-pack.cjs",
-                                "server/**",
-                                "scripts/notify.sh"
-                            ],
-                  "npmRebuild":  false,
-                  "afterPack":  "electron/after-pack.cjs",
-                  "publish":  {
-                                  "provider":  "github",
-                                  "releaseType":  "draft"
-                              },
-                  "mac":  {
-                              "category":  "public.app-category.developer-tools",
-                              "icon":  "build/icon.png",
-                              "target":  [
-                                             {
-                                                 "target":  "dmg",
-                                                 "arch":  [
-                                                              "arm64",
-                                                              "x64"
-                                                          ]
-                                             }
-                                         ]
-                          },
-                  "win":  {
-                              "icon":  "build/icon.png",
-                              "target":  [
-                                             "nsis"
-                                         ]
-                          },
-                  "nsis":  {
-                               "oneClick":  false,
-                               "allowToChangeInstallationDirectory":  true,
-                               "differentialPackage":  false
-                           },
-                  "linux":  {
-                                "icon":  "build/icon.png",
-                                "category":  "Development",
-                                "target":  [
-                                               "AppImage"
-                                           ]
-                            }
-              }
+  "name": "virtual-agent-office",
+  "productName": "Virtual Agent Office",
+  "version": "1.0.0",
+  "description": "Oficina virtual pixel-art para agentes de IA - motor Claude Office con puente para n8n",
+  "author": "Polyrafia",
+  "license": "MIT",
+  "type": "module",
+  "main": "server/index.js",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "vite",
+    "dev:all": "concurrently \"node server/index.js\" \"vite\"",
+    "build": "tsc && vite build",
+    "build:webview": "vite build",
+    "server": "node server/index.js",
+    "start": "node server/index.js",
+    "token": "node server/token.js",
+    "rotate-token": "node scripts/rotate-token.mjs",
+    "open": "node scripts/open-office.mjs",
+    "check-assets": "node scripts/check-assets.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@types/ws": "^8.5.12",
+    "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^8.2.2",
+    "electron": "^33.0.0",
+    "electron-builder": "^24.13.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "supertest": "^7.3.1",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.0",
+    "vitest": "^3.2.7"
+  }
 }

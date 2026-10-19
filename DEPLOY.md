@@ -1,229 +1,224 @@
 # Despliegue — Virtual Agent Office (n8n)
 
-Dos caminos. **Recomendado: Easypanel**, donde ya viven tu n8n y Chatwoot.
+Oficina virtual pixel-art con el motor de [Claude Office](https://github.com/W17ant/Claude-Office)
+y un puente para workflows n8n. Se despliega como un servicio **App** en Easypanel.
 
 ---
 
-## Opción A — Easypanel (recomendada)
+## Cómo funciona el despliegue
 
-Mismo VPS. Sin costo extra, sin cold start, y n8n lo alcanza por red interna
-sin exponer la API a internet.
+```
+                    ┌──────────────────────────────┐
+   n8n ────────────►│  Easypanel / Traefik         │
+   (contenedor)     │  · HTTPS con SSL automático   │
+                    │  · Basic Auth (opcional)      │
+                    └──────────────┬───────────────┘
+                                   │ red interna de Docker
+                                   ▼
+                    ┌──────────────────────────────┐
+                    │  office (contenedor)          │
+                    │  Node 24 · puerto 3334        │
+                    │  · Express + WebSocket        │
+                    │  · SQLite (chat) en /data     │
+                    └──────────────────────────────┘
+```
 
-### 1. Sube el proyecto
+**El proxy es Traefik**, no Nginx: Easypanel lo gestiona solo. No hay que tocar
+`custom.yaml` — Traefik soporta WebSocket de forma nativa.
+
+---
+
+## Antes de empezar
+
+### 1. Genera el token
 
 ```bash
-# Desde tu máquina
-cd "C:\Users\olozada\OneDrive - Sistemas Neumaticos de Envios\Escritorio\REVN8"
-scp -r virtual-agent-office-v2 root@TU_SERVIDOR:/opt/
+cd virtual-agent-office-v2
+npm run token
 ```
 
-O con git: el proyecto ya es un repo (`git init` + push a GitHub/Gitea), y
-Easypanel despliega desde el repositorio.
+Son 64 caracteres hexadecimales. El navegador **exige ese formato** para el
+`#token=` del enlace: con otro formato la oficina se ve pero se queda en
+solo-lectura (lo indica la barra de estado).
 
-### 2. Compila en el servidor
+### 2. Publica el código
+
+Easypanel acepta tres orígenes:
+
+| Origen | Cuándo |
+|---|---|
+| **GitHub** ⭐ | Cada `git push` redespliega solo |
+| **Upload (ZIP)** | Sin cuentas; hay que re-subir el ZIP en cada cambio |
+| **Git (SSH)** | Repositorio en Gitea u otro |
 
 ```bash
-cd /opt/virtual-agent-office-v2
-npm install --omit=dev
-npm run build
-```
-
-> `npm install` ya no compila nada nativo: se quitó `better-sqlite3` y se usa
-> `node:sqlite`, que viene con Node. **Requiere Node 22+** (para Node 24+
-> es estable; en Node 22 el chat no persiste, la oficina funciona igual).
-
-### 3. Dockerfile (para Easypanel)
-
-```dockerfile
-FROM node:24-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY . .
-RUN npm run build
-ENV AGENT_OFFICE_HOST=0.0.0.0
-ENV AGENT_OFFICE_PORT=3334
-EXPOSE 3334
-CMD ["node", "server/index.js"]
-```
-
-```yaml
-# docker-compose.yml (Easypanel)
-services:
-  office:
-    build: .
-    restart: always
-    environment:
-      AGENT_OFFICE_API_TOKEN: ${OFFICE_TOKEN}   # 64 hex: npm run token
-      AGENT_OFFICE_PUBLIC_URL: https://oficina.tudominio.com
-      AGENT_OFFICE_HOME: /data
-    volumes:
-      - office-data:/data
-    ports:
-      - "3334:3334"
-
-volumes:
-  office-data:
-```
-
-### 4. Nginx / proxy inverso
-
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name oficina.tudominio.com;
-
-    ssl_certificate     /etc/letsencrypt/live/oficina.tudominio.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/oficina.tudominio.com/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:3334;
-        proxy_http_version 1.1;
-
-        # WebSocket — imprescindible para las animaciones en vivo
-        proxy_set_header Upgrade    $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host       $host;
-        proxy_set_header X-Real-IP  $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-
-        proxy_read_timeout 3600s;
-        proxy_send_timeout 3600s;
-    }
-}
-```
-
-```bash
-sudo certbot --nginx -d oficina.tudominio.com
-sudo nginx -t && sudo systemctl reload nginx
-```
-
-### 5. n8n apunta a la oficina
-
-Si n8n corre en **otro servicio** de Easypanel, usa el nombre del servicio:
-
-```
-POST http://office:3334/api/n8n/agent
-Headers: Authorization: Bearer <OFFICE_TOKEN>
-```
-
-Si corre en el **mismo host** (fuera de Docker):
-
-```
-POST http://127.0.0.1:3334/api/n8n/agent
+cd virtual-agent-office-v2
+git remote add origin git@github.com:TU-USUARIO/virtual-agent-office.git
+git push -u origin main
 ```
 
 ---
 
-## Opción B — Hostinger
+## Crear el servicio
 
-**Requiere plan Business Web Hosting o Cloud Startup+.** Single y Premium no
-soportan Node.js.
+**New Service → App**, nombre `office`.
 
-### Limitación importante
+### Source
+- **GitHub**: `TU-USUARIO/virtual-agent-office`, rama `main`, Build Path `/`
 
-> En Hostinger los procesos Node.js **se detienen tras un período sin tráfico**
-> ("on demand"). La WebSocket del navegador mantiene el proceso vivo mientras
-> la pestaña está abierta, así que funciona — pero si nadie mira la oficina, el
-> proceso se apaga y **se pierde el estado en memoria** de los agentes.
-> Los agentes vuelven en cuanto n8n manda el siguiente evento (el `POST
-> /api/n8n/agent` los re-crea), y el layout de la oficina se guarda en disco.
->
-> Si quieres que el estado persista, usa Easypanel o manda un ping.
+### Build
+- **Dockerfile** (usa el del repo)
 
-### 1. Sube el proyecto
-
-Opción A — **GitHub** (recomendado):
-- Sube `virtual-agent-office-v2/` a un repo, **con `dist/` y `public/sprites/`
-  incluidos** (o con el build como paso de despliegue)
-- hPanel → Websites → Add Website → Node.js → Connect GitHub
-
-Opción B — **ZIP**:
-- Comprime el proyecto (con `dist/` y `public/`)
-- hPanel → Websites → Add Website → Node.js → Upload archive
-
-### 2. Configuración en hPanel
-
-| Campo | Valor |
-|-------|-------|
-| Application type | `Express` (o `Other`) |
-| Node.js version | **`24`** (o `22`; 24 es lo recomendado) |
-| Root directory | la carpeta del proyecto |
-| Build script | `npm install --omit=dev && npm run build` |
-| Entry file | `server/index.js` |
-| Application mode | `Production` |
-
-### 3. Variables de entorno
-
-hPanel → tu app → Settings → Environment variables:
+### Environment
 
 ```
-AGENT_OFFICE_API_TOKEN=<64-hex-generado-con-npm-run-token>
+AGENT_OFFICE_API_TOKEN=<el token de 64 hex>
 AGENT_OFFICE_HOST=0.0.0.0
 AGENT_OFFICE_PORT=3334
-AGENT_OFFICE_PUBLIC_URL=https://oficina.tudominio.com
+AGENT_OFFICE_PUBLIC_URL=https://$(PRIMARY_DOMAIN)
+AGENT_OFFICE_HOME=/data
 ```
 
-> `AGENT_OFFICE_HOST=0.0.0.0` es **obligatorio** — Hostinger no enruta a
-> `127.0.0.1`.
+| Variable | Por qué |
+|---|---|
+| `AGENT_OFFICE_API_TOKEN` | El token que manda n8n. Sustituye al archivo `~/.agent-office/auth-token` |
+| `AGENT_OFFICE_HOST=0.0.0.0` | **Obligatorio**: Traefik entra por la red de Docker y no alcanza un bind en `127.0.0.1` |
+| `AGENT_OFFICE_PUBLIC_URL` | Habilita ese Host y ese Origin en los guardas del servidor. `$(PRIMARY_DOMAIN)` lo sustituye Easypanel |
+| `AGENT_OFFICE_HOME=/data` | Dónde viven `agents.json` y `chat.db`. Debe coincidir con el volumen |
 
-### 4. SSL
+> La API exige `Authorization: Bearer <token>`. Sin token devuelve 401.
 
-Hostinger emite SSL gratuito para el subdominio que elijas
-(p. ej. `oficina.tudominio.com`).
+### Storage
+- **Volume** → montado en `/data`
 
-### 5. n8n apunta a la URL pública
+Ahí se guarda el estado de la oficina (los agentes vivos y el historial del
+chat). Sin volumen, un redeploy los pierde.
 
+### Domain
+- El **automático** de Easypanel → target port `3334`
+
+Tendrá esta forma: `office-<proyecto>.ckdygu.easypanel.host`
+(el subdominio depende de cómo llamaste al proyecto y al servicio).
+
+SSL automático, sin configurar nada.
+
+### Security (opcional pero recomendado)
+- **Basic Auth** → usuario y contraseña
+
+Protege **todo** el dominio, incluidas las rutas `/api/n8n/*`. Por eso n8n
+debe hablar con la oficina por la **red interna**, no por la URL pública.
+
+### Resources
+- **Memory**: 256 MB (la app usa ~141 MB)
+- **CPU**: sin límite (usa ~1%)
+
+---
+
+## Apuntar n8n
+
+### Si n8n está en el mismo proyecto
+
+```js
+const OFFICE = 'http://office:3334';
 ```
-POST https://oficina.tudominio.com/api/n8n/agent
-Headers: Authorization: Bearer <64-hex>
+
+DNS interno de Docker: latencia ~0 y **la API nunca sale a internet**.
+
+> El nombre es el del servicio. Si no resuelve, se comprueba en el VPS con
+> `docker network inspect` y se ajusta.
+
+### Si n8n está en otro proyecto
+
+```js
+const OFFICE = 'https://office-<proyecto>.ckdygu.easypanel.host';
+```
+
+En este caso la API queda accesible desde internet (con token). Si además
+pones Basic Auth, hay que excluir `/api/` del middleware — o mejor, deja n8n
+en el mismo proyecto.
+
+### Editar los 6 nodos del flujo
+
+En cada nodo `Oficina ▸` del flujo v2.3:
+
+```js
+const OFFICE = 'http://office:3334';   // ← cambiar
+const TOKEN  = 'TU_TOKEN_DE_64_HEX';    // ← cambiar
 ```
 
 ---
 
-## Seguridad
+## Verificar
 
-- `AGENT_OFFICE_API_TOKEN` protege **todas** las rutas de la API n8n.
-- La interfaz (webview) es pública para quien tenga la URL. Para cerrarla,
-  pon el proxy delante con un check de acceso (basic auth, IP allowlist, o
-  Cloudflare Access), o usa el `?token=` del enlace:
-  `https://oficina.tudominio.com/#token=un-token-secreto`
-  (sin él, la oficina se ve pero en solo-lectura).
-- `AGENT_OFFICE_HOST=0.0.0.0` hace que el servidor escuche en todas las
-  interfaces: **pon siempre un proxy con TLS delante.**
+```bash
+# 1. La oficina está viva
+curl https://office-<proyecto>.ckdygu.easypanel.host/health
+# {"status":"ok","agents":0,...}
 
-### recomendado: proteger la UI con un token en el proxy
-
-```nginx
-location / {
-    # El token se pasa por query string (?token=...) o cabecera
-    if ($arg_token != "<64-hex>") {
-        return 403;
-    }
-    proxy_pass http://127.0.0.1:3334;
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade    $http_upgrade;
-    proxy_set_header Connection "upgrade";
-    proxy_set_header Host       $host;
-    proxy_read_timeout 3600s;
-}
+# 2. La API responde (desde el VPS o con Basic Auth)
+curl -X POST https://office-<proyecto>.ckdygu.easypanel.host/api/n8n/agent \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"id":"prueba","name":"Prueba","role":"soporte","task":"Test"}'
+# {"ok":true,"agentId":"prueba"}
 ```
 
-> Ojo: con `if ($arg_token ...)` el WebSocket también debe llevar el token en
-> la query. Comprueba que `wss://oficina.tudominio.com/ws?token=...` funciona.
-> La alternativa más limpia es Cloudflare Access o un basic-auth de Nginx.
+En el navegador:
+1. Abre `https://office-<proyecto>.ckdygu.easypanel.host/#token=<token>`
+2. La oficina se ve (pide usuario y contraseña si hay Basic Auth)
+3. Manda un WhatsApp de prueba → aparece el receptor
+4. **Reinicia el contenedor** → los agentes vuelven (del volumen `/data`)
 
 ---
 
-## Checklist
+## Problemas frecuentes
 
-- [ ] Node.js 22+ (idealmente 24)
-- [ ] `npm install` sin errores (sin compilación nativa)
-- [ ] `npm run build` genera `dist/`
-- [ ] `AGENT_OFFICE_API_TOKEN`, `AGENT_OFFICE_HOST`, `AGENT_OFFICE_PUBLIC_URL` definidos
-- [ ] Proxy con soporte WebSocket (`Upgrade` / `Connection`)
-- [ ] SSL activo
-- [ ] `GET /api/n8n/health` responde `{"ok":true,...}`
-- [ ] n8n apunta a la URL correcta con el Bearer
-- [ ] La oficina abre en el navegador y se ven los agentes
+| Síntoma | Causa | Arreglo |
+|---|---|---|
+| La página carga pero sale "read-only" | El token del `#token=` no son 64 hex | `npm run token` y vuelve a abrir el enlace |
+| `ERR_INVALID_PACKAGE_CONFIG` al arrancar | El `package.json` quedó con un BOM o un byte inválido | El CI lo detecta; revisa la codificación |
+| La API devuelve 401 | Falta el header `Authorization` o el token no coincide | Revisa `AGENT_OFFICE_API_TOKEN` en Easypanel |
+| n8n no alcanza la oficina | `AGENT_OFFICE_HOST` no es `0.0.0.0`, o el nombre del servicio no resuelve | Revisa la variable y `docker network inspect` |
+| La oficina se ve pero sin sprites | `dist/` no se compiló en la imagen | Revisa el log del build en Easypanel |
+| Los agentes desaparecen al redeployar | Falta el volumen en `/data` | Añade el Storage → Volume |
+
+---
+
+## Rollback
+
+| Si falla | Acción |
+|---|---|
+| La oficina no levanta | Quita el dominio. **n8n sigue igual** (los nodos tienen `try/catch`) |
+| El flujo n8n falla | Desactiva v2.3 → activa v2.2. 10 segundos |
+| La API no responde desde n8n | Revisa que el nombre del servicio resuelva en la red de Docker |
+
+---
+
+## Desarrollo local
+
+```bash
+npm install
+npm run dev:all      # Vite en :3333 + servidor en :3334
+```
+
+```bash
+AGENT_OFFICE_API_TOKEN=$(node server/token.js) node server/index.js
+```
+
+### La imagen, sin Docker
+
+```bash
+# compilar
+npm run build
+
+# simular la etapa runtime: solo deps de producción
+mkdir /tmp/office-sim && cd /tmp/office-sim
+cp package.json package-lock.json .
+cp -r ../dist ../server .
+cp ../office.config.json .
+npm ci --omit=dev
+AGENT_OFFICE_API_TOKEN=$(node server/token.js) node server/index.js
+```
+
+Eso es exactamente lo que hace la imagen Docker, y sirve para comprobar que
+no falta ningún archivo.
