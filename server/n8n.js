@@ -186,6 +186,41 @@ export function registerN8nApi(app, deps) {
     res.json(liveAgents())
   })
 
+  /**
+   * Many events at once — so a workflow that finishes a turn can close the
+   * main agent and every sub-agent it spawned in a single call.
+   *
+   * The body is an array of the same shapes the single-event routes take,
+   * each with a `type`: 'agent' | 'working' | 'complete' | 'signal'.
+   */
+  app.post('/api/n8n/batch', requireToken, (req, res) => {
+    const body = req.body
+    const list = Array.isArray(body) ? body : Array.isArray(body?.events) ? body.events : []
+    if (list.length === 0) return res.status(400).json({ ok: false, error: 'no events' })
+
+    const done = []
+    for (const item of list) {
+      if (!item || typeof item !== 'object') continue
+      const kind = text(item.type, 20)
+      let event = null
+      if (kind === 'agent') event = n8nEvent({ ...item, type: 'n8n_spawned' })
+      else if (kind === 'working') event = n8nEvent({ ...item, type: 'n8n_working' })
+      else if (kind === 'complete') event = n8nEvent({ ...item, type: 'n8n_completed' })
+      else if (kind === 'signal') {
+        const signalKind = text(item.kind, 40)
+        if (!signalKind) continue
+        const signal = { kind: signalKind, detail: text(item.detail, 300) }
+        const id = text(item.id, 80)
+        if (id) signal.agentId = id
+        event = { ...(id ? { agentId: id } : {}), type: 'signal', signals: [signal] }
+      }
+      if (!event) continue
+      ingest(event)
+      done.push(event.agent?.id ?? event.agentId ?? null)
+    }
+    res.json({ ok: true, count: done.length, agentIds: done })
+  })
+
   /** Everything the n8n bridge knows about itself (handy for debugging). */
   app.get('/api/n8n/health', (_req, res) => {
     res.json({
