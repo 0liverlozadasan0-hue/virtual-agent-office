@@ -87,6 +87,11 @@ function readPortVar(env, name, fallback, log) {
  * 127.0.0.1 or localhost; anything else is logged as refused, with the
  * reason, and 127.0.0.1 is bound.
  *
+ * The one exception is the wildcard address (0.0.0.0 or ::): a public
+ * deployment behind a reverse proxy has to bind it, and it is opt-in — the
+ * office says out loud that it is binding every interface, and that a proxy
+ * with TLS and an access check belongs in front of it.
+ *
  * ::1 is loopback too, but every client of the server dials IPv4: the office
  * scripts, npm run doctor, the desktop app and its tray, and the plugin's
  * /agent-office:office (which cannot read the environment at all). A server
@@ -113,7 +118,7 @@ export function readHost(env = process.env, log = console) {
   // the office says so out loud so the choice is never made by accident.
   if (raw === '0.0.0.0' || raw === '::') {
     log?.warn?.(
-      '[config] AGENT_OFFICE_HOST=0.0.0.0 — the office is binding every interface. ' +
+      `[config] AGENT_OFFICE_HOST=${raw} — the office is binding every interface. ` +
       'The office page and the read-only GET routes carry no token of their own; ' +
       'put a reverse proxy with TLS and an access check in front of it.',
     )

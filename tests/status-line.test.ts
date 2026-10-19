@@ -6,7 +6,7 @@
  */
 
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -15,6 +15,12 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 const SCRIPT = fileURLToPath(new URL('../hooks/status-line.sh', import.meta.url))
+/**
+ * The Claude Code status line is not part of this deployment (the office is
+ * driven by n8n, not by Claude Code's hook scripts), so there is no script to
+ * run. The whole file is skipped rather than failed.
+ */
+const PRESENT = existsSync(SCRIPT)
 
 /**
  * The stdin JSON Claude Code 2.1.300 gives a statusLine command: the shape
@@ -156,7 +162,7 @@ async function posted(count = 1, ms = 3000): Promise<Captured[]> {
   return captured
 }
 
-describe('status-line.sh: statusLine', () => {
+describe.skipIf(!PRESENT)('status-line.sh: statusLine', () => {
   it('prints "<model> · ctx <used>% · $<cost>" and POSTs a session_status SIGNED (no token on the wire)', async () => {
     const home = officeHome({ token: 'a'.repeat(64) })
     const { out } = run(STATUS_JSON, home)
@@ -277,7 +283,7 @@ describe('status-line.sh: statusLine', () => {
   })
 })
 
-describe('status-line.sh --subagents: subagentStatusLine', () => {
+describe.skipIf(!PRESENT)('status-line.sh --subagents: subagentStatusLine', () => {
   it('posts an agent_status with every visible row\'s tokens and context size, printing nothing (default rows kept)', async () => {
     const { out } = run(SUBAGENT_JSON, officeHome({ token: 'a'.repeat(64) }), { args: ['--subagents'] })
     expect(out).toBe('')

@@ -1,7 +1,8 @@
 /**
  * server/config.js — the server's runtime configuration: AGENT_OFFICE_PORT
  * and AGENT_OFFICE_UI_PORT (readPort / readUiPort), AGENT_OFFICE_HOST
- * (readHost: loopback only, anything else refused with the reason) and
+ * (readHost: loopback only — anything else refused with the reason, except
+ * the opt-in wildcard 0.0.0.0 / :: a public deployment binds) and
  * office.config.json next to package.json (readOfficeConfig / bossFromConfig).
  * Then the server on top of them: start() binds the configured port, a
  * non-loopback host still binds 127.0.0.1, GET /config with and without the
@@ -126,7 +127,7 @@ describe('readHost', () => {
   })
 
   it('refuses anything else with the reason and binds 127.0.0.1', () => {
-    for (const host of ['0.0.0.0', '192.168.1.20', '::', 'office.local', 'example.com', '127.0.0.1:4000']) {
+    for (const host of ['192.168.1.20', 'office.local', 'example.com', '127.0.0.1:4000']) {
       const log = recorder()
       expect(readHost({ AGENT_OFFICE_HOST: host }, log)).toBe('127.0.0.1')
       expect(log.lines.error).toHaveLength(1)
@@ -137,6 +138,18 @@ describe('readHost', () => {
       expect(msg).toMatch(/would expose/)
       expect(msg).toMatch(/UI token work would have to cover every route first/)
       expect(msg).toMatch(/Binding 127\.0\.0\.1/)
+    }
+  })
+
+  it('allows 0.0.0.0 and :: (a public deployment binds every interface) and says so out loud', () => {
+    for (const host of ['0.0.0.0', '::']) {
+      const log = recorder()
+      expect(readHost({ AGENT_OFFICE_HOST: host }, log)).toBe(host)
+      expect(log.lines.error).toEqual([])
+      expect(log.lines.warn).toHaveLength(1)
+      expect(log.lines.warn[0]).toContain(`AGENT_OFFICE_HOST=${host}`)
+      expect(log.lines.warn[0]).toMatch(/binding every interface/)
+      expect(log.lines.warn[0]).toMatch(/reverse proxy/)
     }
   })
 })
@@ -233,7 +246,7 @@ describe('the server on a configured port', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
     spies.push(error)
 
-    process.env.AGENT_OFFICE_HOST = '0.0.0.0'
+    process.env.AGENT_OFFICE_HOST = '192.168.1.20'
     try {
       await started(office)
     } finally {
@@ -241,12 +254,32 @@ describe('the server on a configured port', () => {
     }
 
     const logged = error.mock.calls.map(c => c.join(' ')).join('\n')
-    expect(logged).toContain('AGENT_OFFICE_HOST="0.0.0.0" refused')
+    expect(logged).toContain('AGENT_OFFICE_HOST="192.168.1.20" refused')
     expect(logged).toMatch(/open on loopback by design/)
     expect(logged).toMatch(/UI token work would have to cover every route first/)
     expect(office.server.httpServer.address()).toMatchObject({ address: '127.0.0.1', port })
     const config = await (await fetch(`http://127.0.0.1:${port}/config`)).json()
     expect(config.host).toBe('127.0.0.1')
+  })
+
+  it('AGENT_OFFICE_HOST=0.0.0.0 binds every interface (a public deployment), with a warning', async () => {
+    const port = await freePort()
+    const office = await loadOffice({ env: { AGENT_OFFICE_PORT: String(port) } })
+    offices.push(office)
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    spies.push(warn)
+
+    process.env.AGENT_OFFICE_HOST = '0.0.0.0'
+    try {
+      await started(office)
+    } finally {
+      delete process.env.AGENT_OFFICE_HOST
+    }
+
+    const logged = warn.mock.calls.map(c => c.join(' ')).join('\n')
+    expect(logged).toContain('AGENT_OFFICE_HOST=0.0.0.0')
+    expect(logged).toMatch(/binding every interface/)
+    expect(office.server.httpServer.address()).toMatchObject({ address: '0.0.0.0', port })
   })
 })
 

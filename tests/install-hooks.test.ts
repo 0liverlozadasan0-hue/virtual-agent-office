@@ -15,6 +15,13 @@ import { afterEach, describe, expect, it } from 'vitest'
 
 const INSTALLER = fileURLToPath(new URL('../hooks/install-hooks.sh', import.meta.url))
 const TRACKER_SCRIPT = fileURLToPath(new URL('../hooks/agent-tracker.sh', import.meta.url))
+/**
+ * The Claude Code hooks are not part of this deployment (the office is driven
+ * by n8n, not by Claude Code's hook scripts), so there is no installer to
+ * run. The whole file is skipped rather than failed: the tests belong to the
+ * hooks, and the hooks are gone.
+ */
+const PRESENT = existsSync(INSTALLER)
 /** Every event the installer registers: workers, sessions, and the main thread's turn (prompt, reply, needs-you, errors, compaction). */
 const EVENTS = [
   'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'SubagentStart', 'SubagentStop',
@@ -73,7 +80,7 @@ function trackerGroups(settings: any, event: string) {
   )
 }
 
-describe('install-hooks.sh', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh', () => {
   it('creates settings.json with all 19 events (workers, sessions, the main thread\'s turn, the task list) on a fresh HOME', () => {
     const home = freshHome()
     const out = runInstaller(home)
@@ -251,7 +258,7 @@ describe('install-hooks.sh', () => {
   })
 })
 
-describe('install-hooks.sh: shapes Claude Code would reject do not crash the merge', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh: shapes Claude Code would reject do not crash the merge', () => {
   it.each([
     ['an empty array', []],
     ['null', null],
@@ -297,7 +304,7 @@ describe('install-hooks.sh: shapes Claude Code would reject do not crash the mer
   })
 })
 
-describe('install-hooks.sh: status line (payroll / electricity / memory)', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh: status line (payroll / electricity / memory)', () => {
   const STATUS_COMMAND = /^bash ".*\/hooks\/status-line\.sh"$/
   const SUBAGENT_COMMAND = /^bash ".*\/hooks\/status-line\.sh" --subagents$/
 
@@ -389,7 +396,7 @@ describe('install-hooks.sh: status line (payroll / electricity / memory)', () =>
   })
 })
 
-describe('install-hooks.sh --uninstall', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh --uninstall', () => {
   const install = (home: string, args: string[] = []) => execFileSync('bash', [INSTALLER, ...args], { encoding: 'utf8', env: installerEnv(home) })
   const uninstall = (home: string, args: string[] = []) => execFileSync('bash', [INSTALLER, '--uninstall', ...args], { encoding: 'utf8', env: installerEnv(home) })
   /** Writes settings.json the way the installer does (two-space indent, trailing newline), so a put-back file can be compared byte for byte */
@@ -586,7 +593,7 @@ describe('install-hooks.sh --uninstall', () => {
   })
 })
 
-describe('install-hooks.sh: a settings file that is not valid JSON is refused, never replaced', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh: a settings file that is not valid JSON is refused, never replaced', () => {
   const backups = (dir: string) => readdirSync(dir).filter(f => f.startsWith('settings.json.backup.'))
   /** One trailing comma: everything else in it is the user's and must survive */
   const BROKEN = '{"permissions": {"allow": ["Bash(npm:*)"]}, "model": "opus", "env": {"FOO": "1"},}'
@@ -625,7 +632,7 @@ describe('install-hooks.sh: a settings file that is not valid JSON is refused, n
   })
 })
 
-describe('install-hooks.sh: only hooks/agent-tracker.sh and hooks/status-line.sh are the office\'s', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh: only hooks/agent-tracker.sh and hooks/status-line.sh are the office\'s', () => {
   const lookalikeHook = { matcher: '', hooks: [{ type: 'command', command: 'bash ~/bin/my-agent-tracker.sh --log /tmp/x' }] }
   const writeJson = (home: string, settings: unknown) => {
     mkdirSync(join(home, '.claude'), { recursive: true })
@@ -684,7 +691,7 @@ describe('install-hooks.sh: only hooks/agent-tracker.sh and hooks/status-line.sh
   })
 })
 
-describe('install-hooks.sh --status-line-only (the meters next to the plugin)', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh --status-line-only (the meters next to the plugin)', () => {
   const PLUGIN_SETTINGS = { enabledPlugins: { 'agent-office@agent-office': true } }
   const withPlugin = (home: string) => {
     mkdirSync(join(home, '.claude'), { recursive: true })
@@ -748,7 +755,7 @@ describe('install-hooks.sh --status-line-only (the meters next to the plugin)', 
   })
 })
 
-describe('install-hooks.sh: CLAUDE_CONFIG_DIR', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh: CLAUDE_CONFIG_DIR', () => {
   it('install and --uninstall both use $CLAUDE_CONFIG_DIR/settings.json, the file Claude Code reads, and never create ~/.claude', () => {
     const home = freshHome()
     const config = join(home, 'elsewhere', 'claude-config')
@@ -779,7 +786,7 @@ describe('install-hooks.sh: CLAUDE_CONFIG_DIR', () => {
   })
 })
 
-describe('install-hooks.sh: backups', () => {
+describe.skipIf(!PRESENT)('install-hooks.sh: backups', () => {
   /** A `date` that always answers the same second, so several runs land in it */
   function frozenClock(home: string) {
     const bin = join(home, 'bin')
@@ -822,5 +829,14 @@ describe('install-hooks.sh: backups', () => {
     expect(res.out).toContain('settings.json.backup.20261015_120000.1')
     expect(readFileSync(join(dir(home), 'settings.json.backup.20261015_120000'), 'utf8')).toBe('an older backup')
     expect(readFileSync(join(dir(home), 'settings.json.backup.20261015_120000.1'), 'utf8')).toBe('{"model": "opus"}')
+  })
+})
+
+describe('this deployment', () => {
+  it('runs no Claude Code hooks: the hook scripts are gone from package.json', () => {
+    const pkg = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
+    for (const script of ['install-hooks', 'install-status-line', 'uninstall-hooks']) {
+      expect(pkg.scripts[script], script).toBeUndefined()
+    }
   })
 })
